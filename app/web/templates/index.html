@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Заказы</h1>
+
+<div class="stats">
+    <div class="stat-card">
+        <span class="stat-value">{{ total }}</span>
+        <span class="stat-label">Всего</span>
+    </div>
+    <div class="stat-card urgent-card">
+        <span class="stat-value">{{ pending_count }}</span>
+        <span class="stat-label">На модерации</span>
+    </div>
+</div>
+
+{# ── Service check buttons ── #}
+<div class="scan-buttons">
+    <button class="btn btn-scan" onclick="scanService('telegram')" title="Бот работает в реальном времени — показывает обработанные заказы">📨 Telegram (live)</button>
+    <button class="btn btn-scan" onclick="scanService('email')">📧 Почта</button>
+    <button class="btn btn-scan" onclick="scanService('yougile')">📋 Югил</button>
+    <button class="btn btn-danger btn-sm" onclick="clearOrders()" title="Удалить все записи из списка (Obsidian и папки не трогаются)">🗑 Очистить все</button>
+    <span id="scanStatus" class="scan-status"></span>
+</div>
+
+{# ── Pending orders (moderation queue) ── #}
+{% if pending %}
+<div class="section">
+    <h2>⏳ На модерации</h2>
+    <div class="pending-list">
+    {% for order in pending %}
+        <div class="pending-card" data-id="{{ order.id }}">
+            <div class="pending-header">
+                <strong class="order-code">{{ order.order_code }}</strong>
+                <span class="badge badge-pending">{{ order.status.value }}</span>
+                <span class="badge badge-source">{{ order.source.value }}</span>
+            </div>
+            <div class="pending-body">
+                <p>{{ order.description[:120] }}{% if order.description|length > 120 %}...{% endif %}</p>
+                <div class="pending-details">
+                    {% if order.thickness %}<span>📏 {{ order.thickness }}</span>{% endif %}
+                    {% if order.sink_type %}<span>🚰 {{ order.sink_type }}</span>{% endif %}
+                    {% if order.edge_type %}<span>🔲 {{ order.edge_type }}</span>{% endif %}
+                    {% if order.urgency %}<span>⚡ {{ order.urgency }}</span>{% endif %}
+                </div>
+                {% if order.tags %}
+                <div class="tags">
+                    {% for tag in order.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="pending-actions">
+                <a href="/order/{{ order.id }}" class="btn btn-secondary btn-sm">✏️ Редактировать</a>
+                <button class="btn btn-primary btn-sm" onclick="confirmOrder({{ order.id }})">✅ Подтвердить</button>
+                {% if order.yougile_task_id %}
+                <button class="btn btn-sm" style="background:#5a3a2a" onclick="blacklistOrder({{ order.id }}, '{{ order.yougile_task_id }}')" title="Добавить задачу YouGile в чёрный список и удалить заказ">🚫 Чёрный список</button>
+                {% endif %}
+                <button class="btn btn-danger btn-sm" onclick="deleteOrder({{ order.id }})">🗑 Удалить</button>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# ── All orders ── #}
+<div class="section">
+    <h2>Все заказы</h2>
+    {% if orders %}
+    <table>
+        <thead>
+            <tr>
+                <th>Код</th>
+                <th>Заказчик</th>
+                <th>Описание</th>
+                <th>Статус</th>
+                <th>Источник</th>
+                <th>Теги</th>
+                <th>Дата</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for order in orders %}
+            <tr class="status-{{ order.status.value }}" onclick="window.location='/order/{{ order.id }}'" style="cursor:pointer">
+                <td data-label="Код"><strong>{{ order.order_code }}</strong></td>
+                <td data-label="Заказчик">{{ order.owner }}</td>
+                <td data-label="Описание">{{ order.description[:60] }}{% if order.description|length > 60 %}...{% endif %}</td>
+                <td data-label="Статус">
+                    <span class="badge badge-{{ order.status.value }}">
+                        {{ order.status.value }}
+                    </span>
+                </td>
+                <td data-label="Источник">{{ order.source.value }}</td>
+                <td data-label="Теги">
+                    {% for tag in order.tags[:3] %}<span class="tag tag-sm">{{ tag }}</span>{% endfor %}
+                    {% if order.tags|length > 3 %}<span class="tag tag-sm">+{{ order.tags|length - 3 }}</span>{% endif %}
+                </td>
+                <td data-label="Дата">{{ order.created_at.strftime('%d.%m %H:%M') }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Заказов пока нет. <a href="/new">Создайте первый</a></p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function confirmOrder(id) {
+    if (!confirm('Подтвердить заказ? Будет создана заметка в Obsidian и рабочая папка.')) return;
+    try {
+        const resp = await fetch('/api/orders/' + id + '/confirm', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            alert('Ошибка: ' + data.error);
+        } else {
+            location.reload();
+        }
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function rejectOrder(id) {
+    if (!confirm('Отклонить заказ?')) return;
+    try {
+        const resp = await fetch('/api/orders/' + id + '/reject', { method: 'POST' });
+        location.reload();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function deleteOrder(id) {
+    if (!confirm('Удалить запись из списка? (Obsidian и рабочие папки НЕ удаляются)')) return;
+    try {
+        await fetch('/api/orders/' + id, { method: 'DELETE' });
+        location.reload();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function blacklistOrder(id, taskId) {
+    if (!confirm('Добавить задачу в чёрный список? Она больше не будет появляться при сканировании YouGile.')) return;
+    try {
+        // Add to blacklist
+        const r1 = await fetch('/api/yougile/blacklist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId }),
+        });
+        if (!r1.ok) { const d = await r1.json(); alert('Ошибка: ' + (d.error || r1.status)); return; }
+        // Delete the order from DB
+        await fetch('/api/orders/' + id, { method: 'DELETE' });
+        location.reload();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function clearOrders() {
+    if (!confirm('Удалить ВСЕ записи из списка? (Obsidian и рабочие папки НЕ удаляются)')) return;
+    try {
+        await fetch('/api/clear-orders', { method: 'POST' });
+        location.reload();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function scanService(service) {
+    const status = document.getElementById('scanStatus');
+    status.textContent = 'Сканирование ' + service + '...';
+    try {
+        const resp = await fetch('/api/scan/' + service, { method: 'POST' });
+        const data = await resp.json();
+        const found = data.found || 0;
+        const created = data.created || 0;
+        status.textContent = service + ': найдено ' + found + ', создано ' + created;
+        if (created > 0) {
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            setTimeout(() => { status.textContent = ''; }, 3000);
+        }
+    } catch (e) {
+        status.textContent = 'Ошибка: ' + e.message;
+        setTimeout(() => { status.textContent = ''; }, 3000);
+    }
+}
+
+// Auto-refresh: poll every 5s, reload only if order count changed
+let _lastCount = {{ total }};
+setInterval(async () => {
+    try {
+        const r = await fetch('/api/orders?limit=1');
+        const data = await r.json();
+        if (data.length !== _lastCount || (data.length > 0 && {{ pending_count }} >= 0)) {
+            // Re-check full count
+            const r2 = await fetch('/api/orders');
+            const all = await r2.json();
+            if (all.length !== _lastCount) {
+                _lastCount = all.length;
+                location.reload();
+            }
+        }
+    } catch (e) {}
+}, 5000);
+</script>
+{% endblock %}

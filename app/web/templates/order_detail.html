@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="order-detail">
+    <div class="order-header">
+        <h1>Заказ {{ order.order_code }}</h1>
+        <span class="badge badge-{{ order.status.value }}">{{ order.status.value }}</span>
+        <span class="badge badge-source">{{ order.source.value }}</span>
+    </div>
+
+    {% if order.status.value == 'pending' %}
+    <div class="pending-banner">
+        ⏳ Заказ на модерации — отредактируйте и подтвердите, или отклоните.
+    </div>
+    {% endif %}
+
+    <form id="editForm" class="edit-form">
+        <input type="hidden" id="orderId" value="{{ order.id }}">
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Код заказа</label>
+                <input type="text" id="order_code" value="{{ order.order_code }}">
+            </div>
+            <div class="form-group">
+                <label>Заказчик</label>
+                <input type="text" id="owner" value="{{ order.owner }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Описание</label>
+            <textarea id="description" rows="3">{{ order.description }}</textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Толщина</label>
+                <input type="text" id="thickness" value="{{ order.thickness or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Мойка</label>
+                <input type="text" id="sink_type" value="{{ order.sink_type or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Кромка</label>
+                <input type="text" id="edge_type" value="{{ order.edge_type or '' }}">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Кол-во камня</label>
+                <input type="text" id="stone_amount" value="{{ order.stone_amount or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Срочность</label>
+                <input type="text" id="urgency" value="{{ order.urgency or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Статус</label>
+                <select id="status">
+                    {% for s in ['pending', 'in_progress', 'ready', 'urgent', 'done', 'archived'] %}
+                    <option value="{{ s }}" {% if s == order.status.value %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Теги (через запятую)</label>
+            <input type="text" id="tags" value="{{ order.tags | join(', ') }}">
+        </div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="saveOrder()">💾 Сохранить</button>
+            {% if order.status.value == 'pending' %}
+            <button type="button" class="btn btn-primary" onclick="confirmOrder()">✅ Подтвердить и создать в Obsidian</button>
+            {% endif %}
+            <button type="button" class="btn btn-scan" onclick="checkEmail()">📧 Проверить почту</button>
+            <button type="button" class="btn btn-danger" onclick="deleteOrderRecord()">🗑 Удалить запись</button>
+        </div>
+    </form>
+
+    <div id="actionResult" class="result-panel" style="display:none;">
+        <div id="actionResultContent"></div>
+    </div>
+
+    {# ── Raw text ── #}
+    <div class="section">
+        <h3>Исходный текст</h3>
+        <div class="raw-text">{{ order.raw_text }}</div>
+    </div>
+
+    {# ── Paths ── #}
+    {% if order.obsidian_path or order.attachment_dir %}
+    <div class="section">
+        <h3>Пути</h3>
+        <table>
+            {% if order.obsidian_path %}<tr><td data-label="Тип">Obsidian</td><td data-label="Путь">{{ order.obsidian_path }}</td></tr>{% endif %}
+            {% if order.attachment_dir %}<tr><td data-label="Тип">Рабочая папка</td><td data-label="Путь">{{ order.attachment_dir }}</td></tr>{% endif %}
+        </table>
+    </div>
+    {% endif %}
+
+    {# ── History ── #}
+    {% if history %}
+    <div class="section">
+        <h3>История изменений</h3>
+        <table>
+            <thead><tr><th>Дата</th><th>Поле</th><th>Было</th><th>Стало</th></tr></thead>
+            <tbody>
+            {% for h in history %}
+                <tr>
+                    <td data-label="Дата">{{ h.changed_at.strftime('%d.%m %H:%M') }}</td>
+                    <td data-label="Поле">{{ h.field }}</td>
+                    <td data-label="Было">{{ h.old_value or '—' }}</td>
+                    <td data-label="Стало">{{ h.new_value or '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="back-link"><a href="/">← Назад к списку</a></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const orderId = {{ order.id }};
+
+async function saveOrder() {
+    const data = {
+        order_code: document.getElementById('order_code').value,
+        owner: document.getElementById('owner').value,
+        description: document.getElementById('description').value,
+        thickness: document.getElementById('thickness').value || null,
+        sink_type: document.getElementById('sink_type').value || null,
+        edge_type: document.getElementById('edge_type').value || null,
+        stone_amount: document.getElementById('stone_amount').value || null,
+        urgency: document.getElementById('urgency').value || null,
+        status: document.getElementById('status').value,
+        tags: document.getElementById('tags').value.split(',').map(t => t.trim()).filter(Boolean),
+    };
+    try {
+        const resp = await fetch('/api/orders/' + orderId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+        } else {
+            showResult('✅ Сохранено', 'success');
+        }
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function confirmOrder() {
+    if (!confirm('Подтвердить заказ? Будет создана заметка в Obsidian и рабочая папка.')) return;
+    try {
+        const resp = await fetch('/api/orders/' + orderId + '/confirm', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            alert('Ошибка: ' + data.error);
+        } else {
+            location.reload();
+        }
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function rejectOrder() {
+    if (!confirm('Отклонить заказ?')) return;
+    try {
+        await fetch('/api/orders/' + orderId + '/reject', { method: 'POST' });
+        location.href = '/';
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function deleteOrderRecord() {
+    if (!confirm('Удалить запись из списка? (Obsidian и рабочие папки НЕ удаляются)')) return;
+    try {
+        await fetch('/api/orders/' + orderId, { method: 'DELETE' });
+        location.href = '/';
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function checkEmail() {
+    try {
+        const resp = await fetch('/api/orders/' + orderId + '/check-email', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            showResult('❌ ' + data.error, 'error');
+        } else {
+            showResult('📧 Найдено вложений: ' + data.found, 'success');
+        }
+    } catch (e) {
+        showResult('❌ ' + e.message, 'error');
+    }
+}
+
+function showResult(msg, cls) {
+    const div = document.getElementById('actionResult');
+    const content = document.getElementById('actionResultContent');
+    content.innerHTML = '<p class="' + cls + '">' + msg + '</p>';
+    div.style.display = 'block';
+    setTimeout(() => { div.style.display = 'none'; }, 3000);
+}
+</script>
+{% endblock %}

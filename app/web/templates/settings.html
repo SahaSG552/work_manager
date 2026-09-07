@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Настройки</h1>
+
+<div class="settings-tabs">
+    <button class="stab active" data-tab="clients">Клиенты</button>
+    <button class="stab" data-tab="tags">Теги</button>
+    <button class="stab" data-tab="params">Параметры</button>
+    <button class="stab" data-tab="scanner">Сканирование</button>
+</div>
+
+{# ── Clients ── #}
+<div class="stab-content active" id="tab-clients">
+    <div class="settings-card">
+        <h2>Коды клиентов</h2>
+        <p class="hint">Префикс → папка в Obsidian.</p>
+        <table class="settings-table" id="clients-table"><thead><tr><th>Префикс</th><th>Папка</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="add-row"><input type="text" placeholder="Префикс" id="new-client-prefix" class="input-sm"><input type="text" placeholder="Папка" id="new-client-folder" class="input-sm"><button class="btn btn-sm btn-primary" onclick="addClient()">+</button></div>
+    </div>
+</div>
+
+{# ── Tags ── #}
+<div class="stab-content" id="tab-tags">
+    <div class="settings-card">
+        <h2>Правила тегов</h2>
+        <p class="hint">Ключевое слово → тег.</p>
+        <table class="settings-table" id="tags-table"><thead><tr><th>Ключевое слово</th><th>Тег</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="add-row"><input type="text" placeholder="Ключевое слово" id="new-tag-keyword" class="input-sm"><input type="text" placeholder="Тег" id="new-tag-label" class="input-sm"><button class="btn btn-sm btn-primary" onclick="addTag()">+</button></div>
+    </div>
+</div>
+
+{# ── Parameters ── #}
+<div class="stab-content" id="tab-params">
+    <div class="settings-card"><h2>Кромка / борт</h2><div class="pill-list" id="edge-types"></div><div class="add-pill"><input type="text" placeholder="Новый тип" id="new-edge-type" class="input-sm"><button class="btn btn-sm btn-primary" onclick="addEdgeType()">+</button></div></div>
+    <div class="settings-card"><h2>Мойки</h2><div class="pill-list" id="sink-types"></div><div class="add-pill"><input type="text" placeholder="Новый тип" id="new-sink-type" class="input-sm"><button class="btn btn-sm btn-primary" onclick="addSinkType()">+</button></div></div>
+    <div class="settings-card"><h2>Толщины</h2><div class="pill-list" id="thicknesses"></div><div class="add-pill"><input type="text" placeholder="Новая толщина" id="new-thickness" class="input-sm"><button class="btn btn-sm btn-primary" onclick="addThickness()">+</button></div></div>
+</div>
+
+{# ── Scanner ── #}
+<div class="stab-content" id="tab-scanner">
+    <div class="settings-card">
+        <h2>Почта</h2>
+        <div class="form-group"><label>Сканировать за последние (дней)</label><input type="number" id="email-since-days" min="1" max="90" class="input-sm"></div>
+    </div>
+
+    <div class="settings-card">
+        <h2>YouGile — фильтры</h2>
+        <p class="hint">Стройте цепочку: фильтр → оператор → фильтр → ... Кликните элемент для редактирования.</p>
+        <div id="yg-rules-list"></div>
+
+        <hr style="border-color:#333;margin:16px 0">
+        <h3 id="yg-editor-title">Новый фильтр</h3>
+
+        <div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:0.85rem;color:#aaa">Добавить:</span>
+            <button class="btn btn-sm" onclick="addFilterBtn('board')">📍 Доска</button>
+            <button class="btn btn-sm" onclick="addFilterBtn('column')">📋 Колонка</button>
+            <button class="btn btn-sm" onclick="addFilterBtn('title')">📝 Название</button>
+            <button class="btn btn-sm" onclick="addFilterBtn('sticker_name')">🏷️ Ярлык</button>
+            <button class="btn btn-sm" onclick="addFilterBtn('assigned')">👤 Назначенный</button>
+            <button class="btn btn-sm" onclick="addFilterBtn('done')">✅ Статус задачи</button>
+            <span style="color:#555">|</span>
+            <button class="btn btn-sm" style="background:#2a4a2a" onclick="addOpBtn('AND')">И</button>
+            <button class="btn btn-sm" style="background:#4a4a2a" onclick="addOpBtn('OR')">ИЛИ</button>
+            <button class="btn btn-sm" style="background:#4a2a2a" onclick="addOpBtn('NOT')">НЕ</button>
+        </div>
+
+        <div id="yg-chain" style="min-height:40px;padding:8px;border:1px dashed #444;border-radius:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+            <span class="hint" id="yg-chain-placeholder">Нажмите кнопки выше, чтобы построить фильтр</span>
+        </div>
+
+        <div id="yg-editor-popup" style="display:none;margin-top:8px;padding:12px;border:1px solid #444;border-radius:6px;background:#1a1a2e"></div>
+
+        <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveRule()">💾 Сохранить фильтр</button>
+            <button class="btn btn-sm" onclick="cancelEdit()" id="yg-cancel-btn" style="display:none">Отмена</button>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <h2>Чёрный список</h2>
+        <p class="hint">Пропускаются при сканировании.</p>
+        <div id="yg-blacklist"></div>
+    </div>
+
+    <div class="settings-card">
+        <h2>Интервалы</h2>
+        <div class="form-row">
+            <div class="form-group"><label>YouGile (мин)</label><input type="number" id="interval-yougile" min="1" class="input-sm"></div>
+            <div class="form-group"><label>Почта (мин)</label><input type="number" id="interval-email" min="1" class="input-sm"></div>
+        </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="saveScannerSettings()">Сохранить интервалы</button><span id="scanner-status" class="save-status"></span></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const S = {{ settings | tojson }};
+
+document.querySelectorAll('.stab').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.stab-content').forEach(c=>c.classList.remove('active'));btn.classList.add('active');document.getElementById('tab-'+btn.dataset.tab).classList.add('active');});});
+
+async function apiPut(k,v){await fetch('/api/settings/'+k,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:v})});}
+function flash(el,t='✓'){el.textContent=t;setTimeout(()=>{el.textContent='';},2000);}
+function esc(s){const d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
+
+// ── Clients ──
+function renderClients(){const tb=document.querySelector('#clients-table tbody');tb.innerHTML='';for(const[p,f]of Object.entries(S.owner_mapping||{})){const tr=document.createElement('tr');tr.innerHTML=`<td><code>${esc(p)}</code></td><td>${esc(f)}</td><td><button class="btn btn-sm btn-danger" onclick="removeClient('${esc(p)}')">✕</button></td>`;tb.appendChild(tr);}}
+async function addClient(){const p=document.getElementById('new-client-prefix').value.trim(),f=document.getElementById('new-client-folder').value.trim();if(!p||!f)return;S.owner_mapping[p]=f;await apiPut('owner_mapping',S.owner_mapping);renderClients();document.getElementById('new-client-prefix').value='';document.getElementById('new-client-folder').value='';}
+async function removeClient(p){delete S.owner_mapping[p];await apiPut('owner_mapping',S.owner_mapping);renderClients();}
+
+// ── Tags ──
+function renderTags(){const tb=document.querySelector('#tags-table tbody');tb.innerHTML='';for(const[k,t]of Object.entries(S.tag_rules||{})){const tr=document.createElement('tr');tr.innerHTML=`<td><code>${esc(k)}</code></td><td><span class="tag">${esc(t)}</span></td><td><button class="btn btn-sm btn-danger" onclick="removeTag('${esc(k)}')">✕</button></td>`;tb.appendChild(tr);}}
+async function addTag(){const k=document.getElementById('new-tag-keyword').value.trim(),t=document.getElementById('new-tag-label').value.trim();if(!k||!t)return;S.tag_rules[k]=t;await apiPut('tag_rules',S.tag_rules);renderTags();document.getElementById('new-tag-keyword').value='';document.getElementById('new-tag-label').value='';}
+async function removeTag(k){delete S.tag_rules[k];await apiPut('tag_rules',S.tag_rules);renderTags();}
+
+// ── Pills ──
+function renderPills(cid,items,sk){const el=document.getElementById(cid);el.innerHTML='';items.forEach((item,i)=>{const p=document.createElement('span');p.className='pill';p.innerHTML=`${esc(item)} <span class="pill-x" data-key="${sk}" data-idx="${i}">✕</span>`;el.appendChild(p);});el.querySelectorAll('.pill-x').forEach(x=>{x.addEventListener('click',async()=>{S[x.dataset.key].splice(parseInt(x.dataset.idx),1);await apiPut(x.dataset.key,S[x.dataset.key]);renderAll();});});}
+async function addPill(iid,sk){const i=document.getElementById(iid),v=i.value.trim();if(!v)return;if(!S[sk])S[sk]=[];if(!S[sk].includes(v)){S[sk].push(v);await apiPut(sk,S[sk]);}i.value='';renderAll();}
+function addEdgeType(){addPill('new-edge-type','edge_types');}
+function addSinkType(){addPill('new-sink-type','sink_types');}
+function addThickness(){addPill('new-thickness','thicknesses');}
+
+// ═══════════════════════════════════════════════════════════
+// YouGile chain filter engine
+// ═══════════════════════════════════════════════════════════
+
+let _boards=[], _stickers=[], _users=[];
+let _chain=[];      // current chain being built
+let _editIdx=-1;    // index of rule being edited (-1 = new)
+let _popupIdx=-1;   // chain item being edited in popup
+
+const FL={board:'Доска',column:'Колонка',title:'Название',sticker_name:'Ярлык',assigned:'Назначенный',done:'Статус задачи'};
+const OP_LABELS={AND:'И',OR:'ИЛИ',NOT:'НЕ'};
+const OP_COLORS={AND:'#2a4a2a',OR:'#4a4a2a',NOT:'#4a2a2a'};
+const OP_CYCLE={AND:'OR',OR:'NOT',NOT:'AND'};
+
+async function loadRef(){
+    try{const r=await fetch('/api/yougile/boards');_boards=await r.json();}catch{_boards=[];}
+    try{const r=await fetch('/api/yougile/stickers');_stickers=await r.json();}catch{_stickers=[];}
+    try{const r=await fetch('/api/yougile/users');_users=await r.json();}catch{_users=[];}
+}
+
+function resolveLabel(c){
+    const v=c.value;
+    if(c.kind==='op')return OP_LABELS[v]||v;
+    if(v==='any'||v==='')return 'все';
+    if(c.field==='board'){const b=_boards.find(x=>x.id===v);return b?b.title:v;}
+    if(c.field==='column'){if(v==='any')return 'все';for(const b of _boards){const co=(b.columns||[]).find(x=>x.id===v);if(co)return co.title;}return v;}
+    if(c.field==='sticker_name'){for(const s of _stickers){const st=(s.states||[]).find(x=>x.id===v||x.name===v);if(st)return s.name+': '+st.name;}return v;}
+    if(c.field==='assigned'){const ids=Array.isArray(v)?v:[v];return ids.map(id=>{const u=_users.find(x=>x.id===id);return u?u.realName:id.substring(0,8)+'…';}).join(', ');}
+    if(c.field==='done')return v===true||v==='true'?'✅ Выполнено':'⬜ Не выполнено';
+    if(c.field==='title')return '"'+v+'"';
+    return v;
+}
+
+// ── Render saved rules ──
+function renderRules(){
+    const el=document.getElementById('yg-rules-list');
+    const rules=S.yougile_rules||[];
+    if(!rules.length){el.innerHTML='<p class="hint">Нет фильтров.</p>';return;}
+    el.innerHTML='';
+    rules.forEach((rule,ri)=>{
+        const chain=ruleToChain(rule);
+        if(!chain.length)return;
+        const div=document.createElement('div');
+        div.style.cssText='display:flex;align-items:center;gap:4px;margin:4px 0;padding:8px 12px;border:1px solid #333;border-radius:6px;flex-wrap:wrap';
+        chain.forEach((c,ci)=>{
+            if(c.kind==='op'){
+                const sp=document.createElement('span');
+                sp.className='tag';
+                sp.style.cssText='background:'+OP_COLORS[c.value]+';cursor:pointer';
+                sp.textContent=OP_LABELS[c.value]||c.value;
+                div.appendChild(sp);
+            }else{
+                const sp=document.createElement('span');
+                sp.className='pill';
+                sp.innerHTML=`<strong>${esc(FL[c.field]||c.field)}</strong>: ${esc(resolveLabel(c))}`;
+                div.appendChild(sp);
+            }
+        });
+        const btns=document.createElement('span');
+        btns.style.cssText='margin-left:auto;display:flex;gap:4px';
+        btns.innerHTML=`<button class="btn btn-sm" onclick="editRule(${ri})">✏️</button><button class="btn btn-sm btn-danger" onclick="removeRule(${ri})">✕</button>`;
+        div.appendChild(btns);
+        el.appendChild(div);
+    });
+}
+
+function ruleToChain(rule){
+    if(rule.type==='chain')return rule.chain||[];
+    if(rule.type==='composite'){
+        const op=rule.operator||'AND';
+        const conds=rule.conditions||[];
+        const chain=[];
+        conds.forEach((c,i)=>{if(i>0)chain.push({kind:'op',value:op});chain.push({...c,kind:'filter'});});
+        return chain;
+    }
+    return [];
+}
+
+async function removeRule(i){S.yougile_rules.splice(i,1);await apiPut('yougile_rules',S.yougile_rules);renderRules();}
+
+function editRule(ri){
+    const rule=S.yougile_rules[ri];
+    _chain=[...ruleToChain(rule)];
+    _editIdx=ri;
+    document.getElementById('yg-editor-title').textContent='Редактирование фильтра #'+(ri+1);
+    document.getElementById('yg-cancel-btn').style.display='';
+    _popupIdx=-1;
+    renderChain();
+}
+
+function cancelEdit(){
+    _chain=[];_editIdx=-1;_popupIdx=-1;
+    document.getElementById('yg-editor-title').textContent='Новый фильтр';
+    document.getElementById('yg-cancel-btn').style.display='none';
+    document.getElementById('yg-editor-popup').style.display='none';
+    renderChain();
+}
+
+// ── Chain builder ──
+function addFilterBtn(field){
+    // Add AND operator before if chain has items and last isn't an op
+    if(_chain.length>0){
+        const last=_chain[_chain.length-1];
+        if(last.kind!=='op')_chain.push({kind:'op',value:'AND'});
+    }
+    const defaultVal=field==='done'?false:'';
+    _chain.push({kind:'filter',field:field,op:field==='title'?'contains':'eq',value:defaultVal});
+    _popupIdx=_chain.length-1;
+    renderChain();
+    showPopup(_popupIdx);
+}
+
+function addOpBtn(op){
+    // Only allow op if chain has items and last isn't an op
+    if(!_chain.length)return;
+    const last=_chain[_chain.length-1];
+    if(last.kind==='op')return; // can't double-up ops
+    _chain.push({kind:'op',value:op});
+    renderChain();
+}
+
+function removeChainItem(i){
+    _chain.splice(i,1);
+    // Clean up double-ops
+    let j=0;
+    while(j<_chain.length){
+        if(_chain[j].kind==='op'&&(j===0||j===_chain.length-1||_chain[j+1]?.kind==='op')){
+            _chain.splice(j,1);
+        }else{j++;}
+    }
+    if(_popupIdx===i)_popupIdx=-1;
+    else if(_popupIdx>i)_popupIdx--;
+    document.getElementById('yg-editor-popup').style.display='none';
+    renderChain();
+}
+
+function cycleOp(i){
+    const item=_chain[i];
+    if(item.kind!=='op')return;
+    item.value=OP_CYCLE[item.value]||'AND';
+    renderChain();
+}
+
+function renderChain(){
+    const el=document.getElementById('yg-chain');
+    const ph=document.getElementById('yg-chain-placeholder');
+    if(!_chain.length){el.innerHTML='';el.appendChild(ph||document.createTextNode(''));document.getElementById('yg-chain-placeholder')||el.insertAdjacentHTML('beforeend','<span class="hint" id="yg-chain-placeholder">Нажмите кнопки выше</span>');return;}
+    el.innerHTML='';
+    _chain.forEach((c,i)=>{
+        const span=document.createElement('span');
+        if(c.kind==='op'){
+            span.className='tag';
+            span.style.cssText='background:'+OP_COLORS[c.value]+';cursor:pointer';
+            span.textContent=OP_LABELS[c.value]||c.value;
+            span.title='Кликните чтобы сменить оператор';
+            span.onclick=()=>cycleOp(i);
+        }else{
+            span.className='pill';
+            span.style.cursor='pointer';
+            const label=resolveLabel(c);
+            span.innerHTML=`<strong>${esc(FL[c.field]||c.field)}</strong>: ${esc(label||'(выберите)')}`;
+            span.title='Кликните для редактирования';
+            span.onclick=()=>showPopup(i);
+            if(i===_popupIdx)span.style.outline='2px solid #6c8';
+        }
+        // Delete button
+        const del=document.createElement('span');
+        del.className='pill-x';
+        del.style.marginLeft='2px';
+        del.textContent='✕';
+        del.onclick=(e)=>{e.stopPropagation();removeChainItem(i);};
+        span.appendChild(del);
+        el.appendChild(span);
+    });
+}
+
+// ── Popup editor for a chain item ──
+function showPopup(idx){
+    const item=_chain[idx];
+    if(!item||item.kind==='op')return;
+    _popupIdx=idx;
+    const popup=document.getElementById('yg-editor-popup');
+    popup.style.display='';
+
+    const field=item.field;
+    let html=`<strong>${esc(FL[field]||field)}</strong>`;
+
+    if(field==='board'){
+        html+=_msEditor('popup',_boards.map(b=>({id:b.id,label:b.title})),item.value);
+    }else if(field==='column'){
+        html+='<div style="margin:4px 0"><select id="popup-board" class="input-sm" onchange="fillPopupCols()"><option value="">— Доска —</option>';
+        _boards.forEach(b=>{html+=`<option value="${esc(b.id)}" ${b.id===_findBoardForCol(item.value)?'selected':''}>${esc(b.title)}</option>`;});
+        html+='</select></div><div id="popup-col-list"></div>';
+    }else if(field==='title'){
+        html+=`<input type="text" id="popup-val" class="input-sm" value="${esc(item.value)}" placeholder="Ключевое слово" style="width:100%;margin:4px 0">`;
+    }else if(field==='sticker_name'){
+        let items=[];
+        _stickers.forEach(s=>{(s.states||[]).forEach(st=>{items.push({id:st.name,label:s.name+': '+st.name});});});
+        html+=_msEditor('popup',items,item.value);
+    }else if(field==='assigned'){
+        html+=_msEditor('popup',_users.map(u=>({id:u.id,label:u.realName})),item.value);
+    }else if(field==='done'){
+        const curVal=item.value===true||item.value==='true';
+        html+=`<div style="margin:4px 0;display:flex;gap:8px">
+            <label style="cursor:pointer"><input type="radio" name="popup-done" value="false" ${!curVal?'checked':''}> ⬜ Не выполнено</label>
+            <label style="cursor:pointer"><input type="radio" name="popup-done" value="true" ${curVal?'checked':''}> ✅ Выполнено</label>
+        </div>`;
+    }
+
+    html+='<div style="margin-top:8px"><button class="btn btn-sm btn-primary" onclick="applyPopup()">Применить</button></div>';
+    popup.innerHTML=html;
+
+    // Fill column list if column type
+    if(field==='column')fillPopupCols();
+
+    renderChain();
+}
+
+function _findBoardForCol(colId){
+    if(!colId||colId==='any')return'';
+    for(const b of _boards){if((b.columns||[]).find(c=>c.id===colId))return b.id;}
+    return'';
+}
+
+function _msEditor(prefix,items,currentVal){
+    const selected=new Set(Array.isArray(currentVal)?currentVal:currentVal?[currentVal]:[]);
+    let html=`<div style="margin:4px 0"><input type="text" id="${prefix}-q" class="input-sm" placeholder="Поиск..." oninput="_msFilter('${prefix}')" style="width:100%;margin-bottom:4px">`;
+    html+=`<div id="${prefix}-list" style="max-height:200px;overflow-y:auto;border:1px solid #444;border-radius:4px;padding:4px">`;
+    items.forEach(it=>{
+        const chk=selected.has(it.id)?'checked':'';
+        html+=`<label class="ms-item" style="display:flex;gap:6px;padding:2px 4px;cursor:pointer;font-size:0.85rem" data-s="${esc(it.label.toLowerCase())}"><input type="checkbox" value="${esc(it.id)}" class="ms-cb" ${chk}> ${esc(it.label)}</label>`;
+    });
+    html+='</div><p class="hint" style="margin:4px 0;font-size:0.75rem">Пусто = не ограничивать</p></div>';
+    return html;
+}
+function _msFilter(id){const q=document.getElementById(id+'-q').value.toLowerCase();document.querySelectorAll('#'+id+'-list .ms-item').forEach(el=>{el.style.display=el.dataset.s.includes(q)?'':'none';});}
+function _msGet(id){const r=[];document.querySelectorAll('#'+id+'-list .ms-cb').forEach(cb=>{if(cb.checked)r.push(cb.value);});return r;}
+
+function fillPopupCols(){
+    const bid=document.getElementById('popup-board')?.value;
+    const el=document.getElementById('popup-col-list');
+    if(!el)return;
+    const b=_boards.find(x=>x.id===bid);
+    if(!b){el.innerHTML='';return;}
+    const item=_chain[_popupIdx];
+    const items=[{id:'any',label:'Все колонки'}].concat((b.columns||[]).map(c=>({id:c.id,label:c.title})));
+    el.innerHTML=_msEditor('popup-col',items,item?.value);
+}
+
+function applyPopup(){
+    if(_popupIdx<0||_popupIdx>=_chain.length)return;
+    const item=_chain[_popupIdx];
+    const field=item.field;
+
+    if(field==='board'){
+        const ids=_msGet('popup');
+        if(ids.length===1)item.value=ids[0];
+        else if(ids.length>1){
+            // Replace current with first, add OR + rest
+            item.value=ids[0];
+            for(let i=1;i<ids.length;i++){
+                _chain.splice(_popupIdx+1,0,{kind:'op',value:'OR'},{kind:'filter',field:'board',op:'eq',value:ids[i]});
+            }
+        }
+    }else if(field==='column'){
+        const ids=_msGet('popup-col');
+        if(ids.length===1)item.value=ids[0];
+        else if(ids.length>1){
+            item.value=ids[0];
+            for(let i=1;i<ids.length;i++){
+                _chain.splice(_popupIdx+1,0,{kind:'op',value:'OR'},{kind:'filter',field:'column',op:'eq',value:ids[i]});
+            }
+        }
+    }else if(field==='title'){
+        const v=document.getElementById('popup-val')?.value.trim();
+        if(v)item.value=v;
+    }else if(field==='sticker_name'){
+        const ids=_msGet('popup');
+        if(ids.length===1)item.value=ids[0];
+        else if(ids.length>1){
+            item.value=ids[0];
+            for(let i=1;i<ids.length;i++){
+                _chain.splice(_popupIdx+1,0,{kind:'op',value:'OR'},{kind:'filter',field:'sticker_name',op:'contains',value:ids[i]});
+            }
+        }
+    }else if(field==='assigned'){
+        const ids=_msGet('popup');
+        if(ids.length===1)item.value=ids[0];
+        else if(ids.length>1)item.value=ids;
+    }else if(field==='done'){
+        const radio=document.querySelector('input[name="popup-done"]:checked');
+        if(radio)item.value=radio.value==='true';
+    }
+
+    document.getElementById('yg-editor-popup').style.display='none';
+    _popupIdx=-1;
+    renderChain();
+}
+
+async function saveRule(){
+    // Validate: chain must have at least one filter with a value
+    const filters=_chain.filter(c=>c.kind==='filter'&&(c.value!==''&&c.value!==null&&c.value!==undefined));
+    if(!filters.length)return;
+    // Remove empty filters
+    _chain=_chain.filter(c=>c.kind==='op'||(c.kind==='filter'&&(c.value!==''&&c.value!==null&&c.value!==undefined)));
+
+    const rule={type:'chain',chain:[..._chain]};
+    if(!S.yougile_rules)S.yougile_rules=[];
+
+    if(_editIdx>=0&&_editIdx<S.yougile_rules.length){
+        S.yougile_rules[_editIdx]=rule;
+    }else{
+        S.yougile_rules.push(rule);
+    }
+    await apiPut('yougile_rules',S.yougile_rules);
+    cancelEdit();
+    renderRules();
+}
+
+// ── Blacklist ──
+function renderYgBlacklist(){
+    const el=document.getElementById('yg-blacklist');
+    const bl=S.yougile_blacklist||[];
+    if(!bl.length){el.innerHTML='<p class="hint">Пусто.</p>';return;}
+    el.innerHTML='';
+    bl.forEach((tid,i)=>{const p=document.createElement('span');p.className='pill';p.innerHTML=`<code style="font-size:0.75rem">${esc(tid.substring(0,12))}…</code> <span class="pill-x" onclick="removeBl(${i})">✕</span>`;el.appendChild(p);});
+}
+async function removeBl(i){S.yougile_blacklist.splice(i,1);await apiPut('yougile_blacklist',S.yougile_blacklist);renderYgBlacklist();}
+
+// ── Scanner settings ──
+function renderScanner(){
+    document.getElementById('email-since-days').value=S.email_since_days||7;
+    document.getElementById('interval-yougile').value=Math.round((S.interval_yougile||300)/60);
+    document.getElementById('interval-email').value=Math.round((S.interval_email||600)/60);
+    renderRules();renderYgBlacklist();
+}
+
+async function saveScannerSettings(){
+    const u={email_since_days:parseInt(document.getElementById('email-since-days').value)||7,interval_yougile:(parseInt(document.getElementById('interval-yougile').value)||5)*60,interval_email:(parseInt(document.getElementById('interval-email').value)||10)*60};
+    Object.assign(S,u);
+    await fetch('/api/settings/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(u)});
+    flash(document.getElementById('scanner-status'));
+}
+
+function renderAll(){renderClients();renderTags();renderPills('edge-types',S.edge_types||[],'edge_types');renderPills('sink-types',S.sink_types||[],'sink_types');renderPills('thicknesses',S.thicknesses||[],'thicknesses');renderScanner();}
+
+(async()=>{await loadRef();renderAll();})();
+</script>
+{% endblock %}

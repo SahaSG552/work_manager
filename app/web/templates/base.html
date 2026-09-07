@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">Work Manager</a>
+        <div class="nav-links">
+            <a href="/">Заказы</a>
+            <a href="/new">+ Новый</a>
+            <a href="/settings">⚙️</a>
+        </div>
+        <div class="nav-right">
+            <span id="modeLabel" class="mode-label">Ручной</span>
+            <label class="switch">
+                <input type="checkbox" id="autoToggle" {% if auto_mode %}checked{% endif %}>
+                <span class="slider"></span>
+            </label>
+            <span id="pendingBadge" class="pending-badge" style="display:none"></span>
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    {# ── Log Panel ── #}
+    <div id="log-panel" class="log-panel collapsed">
+        <div class="log-header" onclick="toggleLogPanel()">
+            <span id="log-panel-title">📋 Логи</span>
+            <span id="log-count" class="log-count"></span>
+            <span class="log-toggle" id="log-toggle-icon">▲</span>
+        </div>
+        <div class="log-body" id="log-body">
+            <div class="log-toolbar">
+                <input type="text" id="log-filter" placeholder="Фильтр..." class="input-sm" oninput="filterLogs()">
+                <button class="btn btn-sm" onclick="clearLogPanel()">Очистить</button>
+                <button class="btn btn-sm" onclick="scrollLogBottom()">⬇</button>
+            </div>
+            <div class="log-entries" id="log-entries"></div>
+        </div>
+    </div>
+
+    <script>
+    // Auto-mode toggle
+    const toggle = document.getElementById('autoToggle');
+    const modeLabel = document.getElementById('modeLabel');
+    toggle.addEventListener('change', async () => {
+        const url = toggle.checked ? '/api/auto/start' : '/api/auto/stop';
+        try {
+            await fetch(url, { method: 'POST' });
+            modeLabel.textContent = toggle.checked ? 'Авто' : 'Ручной';
+        } catch (e) {
+            toggle.checked = !toggle.checked;
+        }
+    });
+    if (toggle.checked) modeLabel.textContent = 'Авто';
+
+    // ── Log Panel ──────────────────────────────────────────────
+    let _logEs = null;
+    let _logAll = [];
+    const _MAX_LOGS = 500;
+
+    function toggleLogPanel() {
+        const panel = document.getElementById('log-panel');
+        panel.classList.toggle('collapsed');
+        if (!panel.classList.contains('collapsed')) scrollLogBottom();
+    }
+
+    function scrollLogBottom() {
+        const el = document.getElementById('log-entries');
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLogPanel() {
+        _logAll = [];
+        renderLogs();
+    }
+
+    function filterLogs() {
+        renderLogs();
+    }
+
+    const _LEVEL_COLORS = {
+        'DEBUG': '#888', 'INFO': '#6c8', 'WARNING': '#ca6', 'ERROR': '#c66', 'CRITICAL': '#f44'
+    };
+
+    function addLogEntry(entry) {
+        _logAll.push(entry);
+        if (_logAll.length > _MAX_LOGS) _logAll.shift();
+        const count = document.getElementById('log-count');
+        const n = _logAll.length;
+        count.textContent = n > 0 ? n : '';
+        renderLogs(true);
+    }
+
+    function renderLogs(append = false) {
+        const el = document.getElementById('log-entries');
+        const filter = (document.getElementById('log-filter')?.value || '').toLowerCase();
+        const filtered = filter ? _logAll.filter(e => e.message.toLowerCase().includes(filter) || e.logger.toLowerCase().includes(filter)) : _logAll;
+
+        if (append && !filter) {
+            // Append only the last entry
+            const entry = _logAll[_logAll.length - 1];
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            const color = _LEVEL_COLORS[entry.level] || '#888';
+            div.innerHTML = `<span class="log-time">${esc(entry.time)}</span><span class="log-level" style="color:${color}">${esc(entry.level)}</span><span class="log-logger">${esc(entry.logger.split('.').pop())}</span><span class="log-msg">${esc(entry.message)}</span>`;
+            el.appendChild(div);
+            // Trim old entries from DOM
+            while (el.children.length > _MAX_LOGS) el.removeChild(el.firstChild);
+            scrollLogBottom();
+            return;
+        }
+
+        el.innerHTML = '';
+        for (const entry of filtered) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            const color = _LEVEL_COLORS[entry.level] || '#888';
+            div.innerHTML = `<span class="log-time">${esc(entry.time)}</span><span class="log-level" style="color:${color}">${esc(entry.level)}</span><span class="log-logger">${esc(entry.logger.split('.').pop())}</span><span class="log-msg">${esc(entry.message)}</span>`;
+            el.appendChild(div);
+        }
+        scrollLogBottom();
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+    function startLogStream() {
+        if (_logEs) return;
+        try {
+            _logEs = new EventSource('/api/logs/stream');
+            _logEs.onmessage = (event) => {
+                try {
+                    const entry = JSON.parse(event.data);
+                    addLogEntry(entry);
+                } catch {}
+            };
+            _logEs.onerror = () => {
+                _logEs.close();
+                _logEs = null;
+                // Reconnect after 5s
+                setTimeout(startLogStream, 5000);
+            };
+        } catch {}
+    }
+
+    startLogStream();
+
+    // ── Native Notifications ──────────────────────────────────
+    let _notifPermission = Notification.permission; // 'default'|'granted'|'denied'
+
+    function requestNotifPermission() {
+        if (!('Notification' in window)) return;
+        if (_notifPermission === 'default') {
+            Notification.requestPermission().then(p => { _notifPermission = p; });
+        }
+    }
+
+    // Request on first interaction (browsers block auto-request)
+    document.addEventListener('click', requestNotifPermission, { once: true });
+
+    function sendNotif(title, body) {
+        if (_notifPermission !== 'granted') return;
+        try {
+            new Notification(title, { body: body });
+        } catch {}
+    }
+
+    // Watch SSE for new pending orders
+    const _origOnMsg = _logEs?.onmessage;
+    if (_logEs) {
+        _logEs.addEventListener('message', (event) => {
+            try {
+                const entry = JSON.parse(event.data);
+                const msg = (entry.message || '').toLowerCase();
+                if (msg.includes('pending') || msg.includes('на модерации') || msg.includes('создан заказ')) {
+                    const code = msg.match(/([А-ЯA-Z]{1,5}-?\d{3,5}(?:\/[А-ЯA-Z0-9]+|[А-ЯA-Z]\d?)*)/);
+                    sendNotif('Новый заказ', code ? code[0] : entry.message.slice(0, 80));
+                }
+            } catch {}
+        });
+    }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
