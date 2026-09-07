@@ -11,6 +11,8 @@ services:
       - E:/Работа/YandexDisk:/yandexdisk:rw
       # Persist DB
       - wm-db:/app/app/db
+      # Persist MAX session
+      - max-sessions:/app/max_sessions
     environment:
       - OBSIDIAN_VAULT_PATH=/vault
       - WORKING_BASE_PATH=/yandexdisk
@@ -20,3 +22,4 @@ services:
 
 volumes:
   wm-db:
+  max-sessions:

@@ -212,6 +212,8 @@ def _build_frontmatter(
     status: OrderStatus,
     tags: list[str] | None = None,
     projects: list[str] | None = None,
+    custom_fields: dict[str, str] | None = None,
+    owner: str | None = None,
 ) -> dict:
     """Build YAML frontmatter dict for the Obsidian note."""
     now = datetime.now(_MSK).strftime("%Y-%m-%d %H:%M:%S")
@@ -245,7 +247,61 @@ def _build_frontmatter(
         fm["emailReference"] = True
     if projects:
         fm["projects"] = projects
+
+    # Custom fields → frontmatter keys
+    if custom_fields and owner:
+        fm = _merge_custom_fields_to_fm(fm, custom_fields, owner)
+
     fm["tags"] = all_tags
+    return fm
+
+
+async def _get_frontmatter_mapping(owner: str) -> dict[str, str]:
+    """Get {param_name: frontmatter_key} mapping for a client.
+
+    Returns empty dict if no mapping configured.
+    """
+    from app.settings_db import get_client_params
+    params = await get_client_params(owner)
+    if not params:
+        return {}
+    mapping = {}
+    for p in params:
+        fmk = p.get("frontmatter_key")
+        if fmk:
+            mapping[p["name"]] = fmk
+    return mapping
+
+
+def _merge_custom_fields_to_fm(
+    fm: dict, custom_fields: dict[str, str], owner: str
+) -> dict:
+    """Merge custom_fields into frontmatter using frontmatter_key mapping.
+
+    Synchronous version — reads from cached settings. Falls back to param name as key.
+    """
+    # Try to get mapping from the DEFAULTS (fast, no async)
+    from app.settings_db import DEFAULTS
+    clients = DEFAULTS.get("clients", {})
+    client = clients.get(owner, {})
+    params = client.get("params", [])
+
+    name_to_fmkey = {}
+    for p in params:
+        fmk = p.get("frontmatter_key")
+        if fmk:
+            name_to_fmkey[p["name"]] = fmk
+
+    # Group values by frontmatter key (multiple params may map to same key)
+    fmkey_values: dict[str, list[str]] = {}
+    for param_name, value in custom_fields.items():
+        fm_key = name_to_fmkey.get(param_name, param_name)
+        if fm_key and value:
+            fmkey_values.setdefault(fm_key, []).append(value)
+
+    for fm_key, values in fmkey_values.items():
+        fm[fm_key] = ", ".join(values)
+
     return fm
 
 
@@ -281,10 +337,12 @@ def create_order_note(
     source: str = "manual",
     tags: list[str] | None = None,
     projects: list[str] | None = None,
+    custom_fields: dict[str, str] | None = None,
 ) -> tuple[Path, Path]:
     """Create an Obsidian .md note and attachment folder for a parsed order.
 
     projects: list of parent order codes for multi-order children (e.g. ["[[ИП-1115]]"])
+    custom_fields: per-client custom field values to write into frontmatter
 
     Returns:
         (note_path, attachment_dir_path)
@@ -293,7 +351,7 @@ def create_order_note(
     owner_folder = _resolve_owner_folder(parsed.order_code, parsed.owner)
     status = _status_for_order(parsed)
 
-    log.info(f"[obsidian] Creating note for {parsed.order_code}: owner_folder={owner_folder}, status={status.value}, tags={tags}, projects={projects}")
+    log.info(f"[obsidian] Creating note for {parsed.order_code}: owner_folder={owner_folder}, status={status.value}, tags={tags}, projects={projects}, custom_fields={custom_fields}")
 
     # Owner folder (create if new)
     owner_dir = vault / owner_folder
@@ -307,7 +365,7 @@ def create_order_note(
     note_path = owner_dir / f"{parsed.order_code}.md"
 
     # Build frontmatter
-    fm = _build_frontmatter(parsed, status, tags, projects=projects)
+    fm = _build_frontmatter(parsed, status, tags, projects=projects, custom_fields=custom_fields, owner=parsed.owner)
     fm["source"] = source
 
     # Build content

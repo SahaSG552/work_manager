@@ -1,43 +1,52 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Новый заказ</h1>
+<h1 class="h4 mb-3">Новый заказ</h1>
 
-<div class="form-container">
-    <form id="orderForm" enctype="multipart/form-data">
-        <div class="form-group">
-            <label for="text">Сообщение с заказом</label>
-            <textarea id="text" name="text" rows="6" placeholder="Вставьте текст заказа, например: Заказ ЧМ-1102, столешка + стеновая..."></textarea>
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-8">
+        <form id="orderForm" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="text" class="form-label">Сообщение с заказом</label>
+                <textarea id="text" name="text" rows="5" class="form-control" placeholder="Вставьте текст заказа, например: Заказ ЧМ-1102, столешка + стеновая..."></textarea>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-sm-4">
+                    <label for="client" class="form-label">Заказчик</label>
+                    <select id="client" name="client" class="form-select">
+                        <option value="">Авто</option>
+                    </select>
+                </div>
+                <div class="col-sm-4">
+                    <label for="source" class="form-label">Источник</label>
+                    <select id="source" name="source" class="form-select">
+                        <option value="manual">Вручную</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="email">Email</option>
+                        <option value="yougile">Югил</option>
+                    </select>
+                </div>
+                <div class="col-sm-4">
+                    <label for="files" class="form-label">Вложения (фото, PDF, DWG)</label>
+                    <input type="file" id="files" name="files" multiple accept="image/*,.pdf,.dwg,.dxf" class="form-control">
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" id="previewBtn" class="btn btn-outline-light">Предпросмотр</button>
+                <button type="submit" class="btn btn-primary">Создать заказ</button>
+            </div>
+        </form>
+
+        <div id="preview" class="card mb-3" style="display:none;">
+            <div class="card-header">Предпросмотр парсинга</div>
+            <div class="card-body" id="previewContent"></div>
         </div>
 
-        <div class="form-group">
-            <label for="source">Источник</label>
-            <select id="source" name="source">
-                <option value="manual">Вручную</option>
-                <option value="telegram">Telegram</option>
-                <option value="email">Email</option>
-                <option value="yougile">Югил</option>
-            </select>
+        <div id="result" class="card mb-3" style="display:none;">
+            <div class="card-header">Результат</div>
+            <div class="card-body" id="resultContent"></div>
         </div>
-
-        <div class="form-group">
-            <label for="files">Вложения (фото, PDF, DWG)</label>
-            <input type="file" id="files" name="files" multiple accept="image/*,.pdf,.dwg,.dxf">
-        </div>
-
-        <div class="form-actions">
-            <button type="button" id="previewBtn" class="btn btn-secondary">Предпросмотр</button>
-            <button type="submit" class="btn btn-primary">Создать заказ</button>
-        </div>
-    </form>
-
-    <div id="preview" class="preview-panel" style="display:none;">
-        <h3>Предпросмотр парсинга</h3>
-        <div id="previewContent"></div>
-    </div>
-
-    <div id="result" class="result-panel" style="display:none;">
-        <h3>Результат</h3>
-        <div id="resultContent"></div>
     </div>
 </div>
 
@@ -49,6 +58,21 @@ const previewContent = document.getElementById('previewContent');
 const resultDiv = document.getElementById('result');
 const resultContent = document.getElementById('resultContent');
 
+// Load clients dropdown
+(async function loadClients() {
+    try {
+        const r = await fetch('/api/clients/list');
+        const clients = await r.json();
+        const sel = document.getElementById('client');
+        for (const c of clients) {
+            const opt = document.createElement('option');
+            opt.value = c.code;
+            opt.textContent = c.display_name || c.code;
+            sel.appendChild(opt);
+        }
+    } catch (e) { console.error('Failed to load clients:', e); }
+})();
+
 previewBtn.addEventListener('click', async () => {
     const text = document.getElementById('text').value;
     if (!text.trim()) return alert('Введите текст');
@@ -59,23 +83,26 @@ previewBtn.addEventListener('click', async () => {
     try {
         const resp = await fetch('/api/parse', { method: 'POST', body: formData });
         const data = await resp.json();
+        // If client selected, override owner
+        const clientCode = document.getElementById('client').value;
+        if (clientCode && data.owner !== clientCode) data.owner = clientCode;
         previewDiv.style.display = 'block';
         let tagsHtml = '';
         if (data.auto_tags && data.auto_tags.length) {
-            tagsHtml = '<div class="tags">' + data.auto_tags.map(t => '<span class="tag">' + t + '</span>').join('') + '</div>';
+            tagsHtml = '<div>' + data.auto_tags.map(t => '<span class="badge bg-primary bg-opacity-25 me-1">' + t + '</span>').join('') + '</div>';
         }
         previewContent.innerHTML = `
-            <table>
-                <tr><td><strong>Код заказа</strong></td><td>${data.order_code}</td></tr>
-                <tr><td><strong>Заказчик</strong></td><td>${data.owner}</td></tr>
-                <tr><td><strong>Описание</strong></td><td>${data.description}</td></tr>
-                <tr><td><strong>Толщина</strong></td><td>${data.thickness || '—'}</td></tr>
-                <tr><td><strong>Мойка</strong></td><td>${data.sink_type || '—'}</td></tr>
-                <tr><td><strong>Кромка</strong></td><td>${data.edge_type || '—'}</td></tr>
-                <tr><td><strong>Кол-во камня</strong></td><td>${data.stone_amount || '—'}</td></tr>
-                <tr><td><strong>Срочность</strong></td><td>${data.urgency || '—'}</td></tr>
-                <tr><td><strong>Данные на почте</strong></td><td>${data.email_reference ? 'Да' : 'Нет'}</td></tr>
-                <tr><td><strong>Теги</strong></td><td>${tagsHtml || '—'}</td></tr>
+            <table class="table table-sm mb-0">
+                <tr><td class="text-body-secondary">Код заказа</td><td>${data.order_code}</td></tr>
+                <tr><td class="text-body-secondary">Заказчик</td><td>${data.owner}</td></tr>
+                <tr><td class="text-body-secondary">Описание</td><td>${data.description}</td></tr>
+                <tr><td class="text-body-secondary">Толщина</td><td>${data.thickness || '—'}</td></tr>
+                <tr><td class="text-body-secondary">Мойка</td><td>${data.sink_type || '—'}</td></tr>
+                <tr><td class="text-body-secondary">Кромка</td><td>${data.edge_type || '—'}</td></tr>
+                <tr><td class="text-body-secondary">Кол-во камня</td><td>${data.stone_amount || '—'}</td></tr>
+                <tr><td class="text-body-secondary">Срочность</td><td>${data.urgency || '—'}</td></tr>
+                <tr><td class="text-body-secondary">Данные на почте</td><td>${data.email_reference ? 'Да' : 'Нет'}</td></tr>
+                <tr><td class="text-body-secondary">Теги</td><td>${tagsHtml || '—'}</td></tr>
             </table>
         `;
     } catch (e) {
@@ -86,6 +113,9 @@ previewBtn.addEventListener('click', async () => {
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(form);
+    // Add owner_override if client selected
+    const clientCode = document.getElementById('client').value;
+    if (clientCode) formData.append('owner_override', clientCode);
 
     try {
         const resp = await fetch('/api/process', { method: 'POST', body: formData });
@@ -93,17 +123,21 @@ form.addEventListener('submit', async (e) => {
         resultDiv.style.display = 'block';
 
         if (data.error) {
-            resultContent.innerHTML = `<p class="error">${data.error}</p>`;
+            resultContent.innerHTML = `<div class="alert alert-danger mb-0">${data.error}</div>`;
         } else {
+            // data is array of results
+            const codes = Array.isArray(data) ? data.map(r => r.order?.order_code).filter(Boolean).join(', ') : '';
             resultContent.innerHTML = `
-                <p class="success">✅ Заказ <strong>${data.order.order_code}</strong> создан (на модерации)!</p>
-                <p><a href="/">← Вернуться к списку</a></p>
+                <div class="alert alert-success mb-0">
+                    ✅ Заказ <strong>${codes || 'создан'}</strong> создан (на модерации)!
+                </div>
+                <p class="mt-2 mb-0"><a href="/">← Вернуться к списку</a></p>
             `;
             document.getElementById('text').value = '';
         }
     } catch (e) {
         resultDiv.style.display = 'block';
-        resultContent.innerHTML = `<p class="error">Ошибка: ${e.message}</p>`;
+        resultContent.innerHTML = `<div class="alert alert-danger mb-0">Ошибка: ${e.message}</div>`;
     }
 });
 </script>

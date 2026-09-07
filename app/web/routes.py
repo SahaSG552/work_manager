@@ -24,6 +24,7 @@ from app.scanner import scan_yougile, scan_email, scan_telegram
 from app.scheduler import start_scheduler, stop_scheduler, is_running
 from app.settings_db import (
     get_all_settings, set_setting, set_settings_batch, reset_setting,
+    get_client_params, get_clients,
 )
 
 log = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ async def api_log_history():
 async def api_process(
     text: str = Form(...),
     source: str = Form("manual"),
+    owner_override: str = Form(None),
     files: list[UploadFile] = File(default=[]),
 ):
     """Process a message: parse → create pending order."""
@@ -135,6 +137,7 @@ async def api_process(
         text=text,
         source=src,
         attachments=attachments if attachments else None,
+        owner_override=owner_override if owner_override else None,
     )
     return JSONResponse([r.model_dump(mode="json") for r in results])
 
@@ -340,6 +343,73 @@ async def api_get_settings():
     return JSONResponse(await get_all_settings())
 
 
+@app.get("/api/settings/client_params")
+async def api_get_client_params():
+    """Get client params definitions."""
+    return JSONResponse(await get_client_params())
+
+
+@app.get("/api/settings/clients")
+async def api_get_clients():
+    """Get all clients (unified config)."""
+    return JSONResponse(await get_clients())
+
+
+@app.get("/api/clients/list")
+async def api_clients_list():
+    """Get clients as simple list for dropdowns: [{code, display_name, color}]."""
+    clients = await get_clients()
+    return JSONResponse([
+        {"code": c.get("code", k), "display_name": c.get("display_name", k), "color": c.get("color", "#6c757d")}
+        for k, c in clients.items()
+    ])
+
+
+@app.put("/api/settings/clients/{code}")
+async def api_save_client(code: str, body: dict):
+    """Create or update a client. Body: {display_name, prefixes, color, description, params}"""
+    clients = await get_clients()
+    client_data = {
+        "code": code,
+        "display_name": body.get("display_name", code),
+        "prefixes": body.get("prefixes", []),
+        "color": body.get("color", "#6c757d"),
+        "description": body.get("description", ""),
+        "params": body.get("params", []),
+    }
+    clients[code] = client_data
+    await set_setting("clients", clients)
+    # Also sync owner_mapping and client_params for backward compat
+    from app.settings_db import get_setting
+    om = {}
+    for c_code, c in clients.items():
+        for prefix in c.get("prefixes", []):
+            om[prefix] = c_code
+    await set_setting("owner_mapping", om)
+    cp = {c_code: c.get("params", []) for c_code, c in clients.items() if c.get("params")}
+    await set_setting("client_params", cp)
+    return JSONResponse({"ok": True, "client": client_data})
+
+
+@app.delete("/api/settings/clients/{code}")
+async def api_delete_client(code: str):
+    """Delete a client."""
+    clients = await get_clients()
+    if code not in clients:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    del clients[code]
+    await set_setting("clients", clients)
+    # Sync owner_mapping and client_params
+    om = {}
+    for c_code, c in clients.items():
+        for prefix in c.get("prefixes", []):
+            om[prefix] = c_code
+    await set_setting("owner_mapping", om)
+    cp = {c_code: c.get("params", []) for c_code, c in clients.items() if c.get("params")}
+    await set_setting("client_params", cp)
+    return JSONResponse({"ok": True})
+
+
 @app.put("/api/settings/{key}")
 async def api_set_setting(key: str, body: dict):
     """Set a single setting value."""
@@ -454,6 +524,34 @@ async def api_yougile_blacklist_remove(task_id: str):
         bl.remove(task_id)
         await set_setting("yougile_blacklist", bl)
     return JSONResponse({"ok": True, "blacklist": bl})
+
+
+# ── API: MAX Bridge ───────────────────────────────────────────────────
+
+
+@app.get("/api/max-bridge/status")
+async def api_max_bridge_status():
+    """Get MAX bridge status."""
+    from app.channels.max_bridge import is_max_bridge_running
+    return JSONResponse({"running": is_max_bridge_running()})
+
+
+@app.post("/api/max-bridge/start")
+async def api_max_bridge_start():
+    """Start MAX bridge."""
+    from app.channels.max_bridge import is_max_bridge_running, start_max_bridge
+    if is_max_bridge_running():
+        return JSONResponse({"status": "already_running"})
+    start_max_bridge()
+    return JSONResponse({"status": "started"})
+
+
+@app.post("/api/max-bridge/stop")
+async def api_max_bridge_stop():
+    """Stop MAX bridge."""
+    from app.channels.max_bridge import stop_max_bridge
+    stop_max_bridge()
+    return JSONResponse({"status": "stopped"})
 
 
 # Mount static files AFTER all routes

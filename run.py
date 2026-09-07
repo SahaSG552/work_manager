@@ -33,6 +33,16 @@ async def main() -> None:
     bot_task = asyncio.create_task(start_telegram_bot())
     log.info("Telegram bot task created")
 
+    # Start MAX bridge if enabled
+    from app.settings_db import get_setting
+    max_cfg = await get_setting("max_bridge")
+    if max_cfg and max_cfg.get("enabled"):
+        from app.channels.max_bridge import start_max_bridge
+        start_max_bridge()
+        log.info("MAX bridge task created")
+    else:
+        log.info("MAX bridge disabled (enable in Settings → MAX мост)")
+
     # Start web server (blocking)
     config = uvicorn.Config(
         fastapi_app,

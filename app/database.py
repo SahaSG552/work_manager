@@ -54,6 +54,7 @@ _MIGRATIONS = [
     """ALTER TABLE orders ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'""",
     """ALTER TABLE orders ADD COLUMN folder_name TEXT""",
     """ALTER TABLE orders ADD COLUMN yougile_task_id TEXT""",
+    """ALTER TABLE orders ADD COLUMN custom_fields TEXT""",
 ]
 
 
@@ -80,8 +81,8 @@ async def insert_order(record: OrderRecord) -> int:
                (order_code, owner, description, status, source, raw_text,
                 thickness, sink_type, edge_type, stone_amount, urgency,
                 email_reference, tags, obsidian_path, attachment_dir, folder_name,
-                yougile_task_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                yougile_task_id, custom_fields, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 record.order_code,
                 record.owner,
@@ -100,6 +101,7 @@ async def insert_order(record: OrderRecord) -> int:
                 record.attachment_dir,
                 record.folder_name,
                 record.yougile_task_id,
+                json.dumps(record.custom_fields, ensure_ascii=False) if record.custom_fields else None,
                 record.created_at.isoformat(),
                 record.updated_at.isoformat(),
             ),
@@ -168,6 +170,8 @@ async def update_order(order_id: int, update: OrderUpdate) -> OrderRecord | None
     for key, value in fields.items():
         if key == "tags":
             value = json.dumps(value, ensure_ascii=False)
+        elif key == "custom_fields":
+            value = json.dumps(value, ensure_ascii=False) if value else None
         sets.append(f"{key} = ?")
         vals.append(value)
 
@@ -272,6 +276,8 @@ def _row_to_record(row: aiosqlite.Row) -> OrderRecord:
     tags = json.loads(tags_raw) if isinstance(tags_raw, str) else []
     folder_name = row["folder_name"] if "folder_name" in row.keys() else None
     yougile_task_id = row["yougile_task_id"] if "yougile_task_id" in row.keys() else None
+    custom_fields_raw = row["custom_fields"] if "custom_fields" in row.keys() else None
+    custom_fields = json.loads(custom_fields_raw) if custom_fields_raw else None
     return OrderRecord(
         id=row["id"],
         order_code=row["order_code"],
@@ -289,6 +295,7 @@ def _row_to_record(row: aiosqlite.Row) -> OrderRecord:
         tags=tags,
         folder_name=folder_name,
         yougile_task_id=yougile_task_id,
+        custom_fields=custom_fields,
         obsidian_path=row["obsidian_path"],
         attachment_dir=row["attachment_dir"],
         created_at=datetime.fromisoformat(row["created_at"]),

@@ -225,3 +225,60 @@ def _parse_with_regex(text: str) -> ParsedOrder:
         email_reference=email_ref,
         raw_text=text,
     )
+
+
+async def extract_custom_fields(text: str, owner: str) -> dict[str, str]:
+    """Extract custom field values from text based on owner's parameter definitions.
+
+    Uses client_params from settings DB. Each param has a parse_type:
+    - "keyword": if any keyword from parse_rules is found in text, the matched context is extracted
+    - "regex": parse_rules[0] is used as a regex pattern, group(1) or full match is the value
+    - "manual": skipped (user fills manually)
+    """
+    import re as _re
+    from app.settings_db import get_client_params
+
+    params = await get_client_params(owner)
+    if not params:
+        return {}
+
+    text_lower = text.lower()
+    result: dict[str, str] = {}
+
+    for param in params:
+        parse_type = param.get("parse_type", "manual")
+        rules = param.get("parse_rules", [])
+        name = param.get("name", "")
+
+        if parse_type == "manual" or not rules:
+            continue
+
+        if parse_type == "keyword":
+            # Check if any keyword is present in text
+            for keyword in rules:
+                kw = keyword.lower()
+                if kw in text_lower:
+                    # Find the context around the keyword — extract nearby value
+                    idx = text_lower.find(kw)
+                    # Get up to 30 chars after the keyword as the value
+                    after = text[idx:idx + len(keyword) + 30].strip()
+                    # Try to extract a meaningful value after the keyword
+                    val_match = _re.search(r'(?:' + _re.escape(keyword) + r')\s*[—:\-]?\s*(.+?)(?:[,;\n]|$)', text, _re.IGNORECASE)
+                    if val_match and val_match.group(1).strip():
+                        result[name] = val_match.group(1).strip()[:50]
+                    else:
+                        result[name] = "да"
+                    break
+
+        elif parse_type == "regex":
+            pattern = rules[0] if rules else ""
+            if pattern:
+                try:
+                    m = _re.search(pattern, text, _re.IGNORECASE)
+                    if m:
+                        value = m.group(1) if m.lastindex else m.group(0)
+                        result[name] = value.strip()[:50]
+                except _re.error:
+                    pass
+
+    return result

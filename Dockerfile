@@ -11,8 +11,8 @@ COPY app/ app/
 COPY run.py .
 COPY .env .env
 
-# Create DB dir
-RUN mkdir -p /app/app/db
+# Create directories
+RUN mkdir -p /app/app/db /app/max_sessions
 
 EXPOSE 8090
 

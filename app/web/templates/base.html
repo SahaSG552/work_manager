@@ -1,29 +1,36 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Work Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav>
-        <a href="/" class="brand">Work Manager</a>
-        <div class="nav-links">
-            <a href="/">Заказы</a>
-            <a href="/new">+ Новый</a>
-            <a href="/settings">⚙️</a>
-        </div>
-        <div class="nav-right">
-            <span id="modeLabel" class="mode-label">Ручной</span>
-            <label class="switch">
-                <input type="checkbox" id="autoToggle" {% if auto_mode %}checked{% endif %}>
-                <span class="slider"></span>
-            </label>
-            <span id="pendingBadge" class="pending-badge" style="display:none"></span>
+    <nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom border-secondary">
+        <div class="container-fluid">
+            <a class="navbar-brand text-danger fw-bold" href="/">Work Manager</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navContent">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">Заказы</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/new">+ Новый</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/settings">⚙️ Настройки</a></li>
+                </ul>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="modeLabel" class="form-text">Ручной</span>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="autoToggle" {% if auto_mode %}checked{% endif %}>
+                    </div>
+                </div>
+            </div>
         </div>
     </nav>
-    <main>
+
+    <main class="container-fluid py-3">
         {% block content %}{% endblock %}
     </main>
 
@@ -31,19 +38,20 @@
     <div id="log-panel" class="log-panel collapsed">
         <div class="log-header" onclick="toggleLogPanel()">
             <span id="log-panel-title">📋 Логи</span>
-            <span id="log-count" class="log-count"></span>
-            <span class="log-toggle" id="log-toggle-icon">▲</span>
+            <span id="log-count" class="badge bg-secondary ms-1"></span>
+            <span class="log-toggle ms-auto" id="log-toggle-icon">▲</span>
         </div>
         <div class="log-body" id="log-body">
-            <div class="log-toolbar">
-                <input type="text" id="log-filter" placeholder="Фильтр..." class="input-sm" oninput="filterLogs()">
-                <button class="btn btn-sm" onclick="clearLogPanel()">Очистить</button>
-                <button class="btn btn-sm" onclick="scrollLogBottom()">⬇</button>
+            <div class="log-toolbar d-flex gap-2 p-1 px-2 border-bottom border-secondary">
+                <input type="text" id="log-filter" placeholder="Фильтр..." class="form-control form-control-sm" style="max-width:200px" oninput="filterLogs()">
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearLogPanel()">Очистить</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="scrollLogBottom()">⬇</button>
             </div>
             <div class="log-entries" id="log-entries"></div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     // Auto-mode toggle
     const toggle = document.getElementById('autoToggle');
@@ -85,7 +93,7 @@
     }
 
     const _LEVEL_COLORS = {
-        'DEBUG': '#888', 'INFO': '#6c8', 'WARNING': '#ca6', 'ERROR': '#c66', 'CRITICAL': '#f44'
+        'DEBUG': '#6c757d', 'INFO': '#198754', 'WARNING': '#ffc107', 'ERROR': '#dc3545', 'CRITICAL': '#ff2040'
     };
 
     function addLogEntry(entry) {
@@ -103,14 +111,12 @@
         const filtered = filter ? _logAll.filter(e => e.message.toLowerCase().includes(filter) || e.logger.toLowerCase().includes(filter)) : _logAll;
 
         if (append && !filter) {
-            // Append only the last entry
             const entry = _logAll[_logAll.length - 1];
             const div = document.createElement('div');
             div.className = 'log-entry';
-            const color = _LEVEL_COLORS[entry.level] || '#888';
+            const color = _LEVEL_COLORS[entry.level] || '#6c757d';
             div.innerHTML = `<span class="log-time">${esc(entry.time)}</span><span class="log-level" style="color:${color}">${esc(entry.level)}</span><span class="log-logger">${esc(entry.logger.split('.').pop())}</span><span class="log-msg">${esc(entry.message)}</span>`;
             el.appendChild(div);
-            // Trim old entries from DOM
             while (el.children.length > _MAX_LOGS) el.removeChild(el.firstChild);
             scrollLogBottom();
             return;
@@ -120,7 +126,7 @@
         for (const entry of filtered) {
             const div = document.createElement('div');
             div.className = 'log-entry';
-            const color = _LEVEL_COLORS[entry.level] || '#888';
+            const color = _LEVEL_COLORS[entry.level] || '#6c757d';
             div.innerHTML = `<span class="log-time">${esc(entry.time)}</span><span class="log-level" style="color:${color}">${esc(entry.level)}</span><span class="log-logger">${esc(entry.logger.split('.').pop())}</span><span class="log-msg">${esc(entry.message)}</span>`;
             el.appendChild(div);
         }
@@ -142,7 +148,6 @@
             _logEs.onerror = () => {
                 _logEs.close();
                 _logEs = null;
-                // Reconnect after 5s
                 setTimeout(startLogStream, 5000);
             };
         } catch {}
@@ -151,7 +156,7 @@
     startLogStream();
 
     // ── Native Notifications ──────────────────────────────────
-    let _notifPermission = Notification.permission; // 'default'|'granted'|'denied'
+    let _notifPermission = Notification.permission;
 
     function requestNotifPermission() {
         if (!('Notification' in window)) return;
@@ -160,18 +165,13 @@
         }
     }
 
-    // Request on first interaction (browsers block auto-request)
     document.addEventListener('click', requestNotifPermission, { once: true });
 
     function sendNotif(title, body) {
         if (_notifPermission !== 'granted') return;
-        try {
-            new Notification(title, { body: body });
-        } catch {}
+        try { new Notification(title, { body: body }); } catch {}
     }
 
-    // Watch SSE for new pending orders
-    const _origOnMsg = _logEs?.onmessage;
     if (_logEs) {
         _logEs.addEventListener('message', (event) => {
             try {

@@ -126,6 +126,7 @@ class OrderRecord(BaseModel):
     tags: list[str] = Field(default_factory=list)
     folder_name: str | None = None  # Shared folder name for multi-orders (e.g. "МСЛ-1105, 1106")
     yougile_task_id: str | None = None  # YouGile task ID (for blacklist)
+    custom_fields: dict[str, str] | None = None  # Per-client custom parameters (JSON)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     obsidian_path: str | None = None
@@ -168,6 +169,7 @@ class OrderUpdate(BaseModel):
     email_reference: bool | None = None
     tags: list[str] | None = None
     folder_name: str | None = None
+    custom_fields: dict[str, str] | None = None
 
 
 class ServiceCheckResult(BaseModel):

@@ -62,6 +62,12 @@ async def create_pending_order(
         parsed.owner = owner_override
     log.info(f"[processor] Parsed: code={parsed.order_code}, owner={parsed.owner}, thickness={parsed.thickness}, edge={parsed.edge_type}, email_ref={parsed.email_reference}")
 
+    # Extract per-client custom fields
+    from app.parser import extract_custom_fields
+    custom_fields = await extract_custom_fields(text, parsed.owner)
+    if custom_fields:
+        log.info(f"[processor] Custom fields for {parsed.owner}: {custom_fields}")
+
     tags = await generate_tags(parsed)
 
     record = OrderRecord(
@@ -79,6 +85,7 @@ async def create_pending_order(
         email_reference=parsed.email_reference,
         tags=tags,
         yougile_task_id=yougile_task_id,
+        custom_fields=custom_fields if custom_fields else None,
     )
     row_id = await insert_order(record)
     record.id = row_id
@@ -145,7 +152,8 @@ async def confirm_and_process(
     # Create Obsidian note
     try:
         note_path, obs_attachment_dir = create_order_note(
-            parsed, source=record.source.value, tags=record.tags, projects=projects
+            parsed, source=record.source.value, tags=record.tags, projects=projects,
+            custom_fields=record.custom_fields,
         )
         log.info(f"Created note: {note_path}")
     except Exception as e:
@@ -600,6 +608,11 @@ async def process_message(
 
         # New order — create as PENDING
         tags = await generate_tags(parsed)
+
+        # Extract per-client custom fields
+        from app.parser import extract_custom_fields
+        custom_fields = await extract_custom_fields(text, parsed.owner)
+
         record = OrderRecord(
             order_code=parsed.order_code,
             owner=parsed.owner,
@@ -616,6 +629,7 @@ async def process_message(
             tags=tags,
             folder_name=folder_name if folder_name else None,
             yougile_task_id=yougile_task_id,
+            custom_fields=custom_fields if custom_fields else None,
         )
         row_id = await insert_order(record)
         record.id = row_id
